@@ -142,9 +142,79 @@ impl Bitmap {
     }
 
     /// Iterate over all "on" pixels as (x, y) positions.
+    #[allow(dead_code)]
     pub fn iter_on(&self) -> impl Iterator<Item = (u32, u32)> + '_ {
         (0..self.height).flat_map(move |y| {
             (0..self.width).filter_map(move |x| if self.get(x, y) { Some((x, y)) } else { None })
         })
     }
+
+    /// Decompose the "on" cells into axis-aligned rectangles using a greedy
+    /// row-run + column-extension algorithm.
+    ///
+    /// Each `Rect` covers a contiguous block of on-cells; together they form
+    /// an exact tiling (no overlaps, no gaps). This is the cheap way to
+    /// collapse per-pixel boundaries into larger polygons for GDSII output.
+    pub fn to_rectangles(&self) -> Vec<Rect> {
+        let w = self.width as usize;
+        let h = self.height as usize;
+        let mut covered = vec![false; w * h];
+        let mut rects: Vec<Rect> = Vec::new();
+
+        for y in 0..h {
+            let mut x = 0;
+            while x < w {
+                let idx = y * w + x;
+                if self.data[idx] == 0 || covered[idx] {
+                    // Skip off-cells or already covered.
+                    x += 1;
+                    continue;
+                }
+                // Find maximum horizontal run starting at (x, y).
+                let mut run_w = 1;
+                while x + run_w < w {
+                    let i = y * w + x + run_w;
+                    if self.data[i] == 0 || covered[i] {
+                        break;
+                    }
+                    run_w += 1;
+                }
+                // Extend vertically: each additional row must have all cells
+                // in [x..x+run_w) on and not already covered.
+                let mut run_h = 1;
+                'outer: while y + run_h < h {
+                    for xx in x..x + run_w {
+                        let i = (y + run_h) * w + xx;
+                        if self.data[i] == 0 || covered[i] {
+                            break 'outer;
+                        }
+                    }
+                    run_h += 1;
+                }
+                // Mark covered.
+                for yy in y..y + run_h {
+                    for xx in x..x + run_w {
+                        covered[yy * w + xx] = true;
+                    }
+                }
+                rects.push(Rect {
+                    x: x as u32,
+                    y: y as u32,
+                    w: run_w as u32,
+                    h: run_h as u32,
+                });
+                x += run_w;
+            }
+        }
+        rects
+    }
+}
+
+/// Axis-aligned rectangle of on-cells produced by [`Bitmap::to_rectangles`].
+#[derive(Debug, Clone, Copy)]
+pub struct Rect {
+    pub x: u32,
+    pub y: u32,
+    pub w: u32,
+    pub h: u32,
 }

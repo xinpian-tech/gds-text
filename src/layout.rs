@@ -5,13 +5,12 @@
 //! for each entry at its layout position.
 
 use anyhow::Result;
-use gds21::{
-    GdsBoundary, GdsDateTimes, GdsElement, GdsLibrary, GdsPoint, GdsStruct, GdsStructRef, GdsUnits,
-};
+use gds21::{GdsDateTimes, GdsElement, GdsLibrary, GdsPoint, GdsStruct, GdsStructRef, GdsUnits};
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 
 use crate::config::{DesignRules, LayerConfig};
+use crate::gds_out;
 use crate::text_render::TextRenderer;
 
 /// One layout entry -- a single text snippet with its own local canvas.
@@ -71,17 +70,18 @@ pub fn write_layout_gds(
         let bmp = renderer.rasterize(&snippet, &cfg.font_name)?;
         let rotated = bmp.rotate(entry.rotation_deg);
         let h = rotated.height() as i32;
+        let rects = rotated.to_rectangles();
 
-        // Build the cell with local-coordinate pixel boundaries. Flip Y
-        // inside the cell so the text reads upright once this cell is
-        // placed in the top cell.
+        // Build the cell with merged local-coordinate rectangles. Flip Y
+        // inside the cell so the text reads upright once placed.
         let mut cell = GdsStruct::new(cell_name.clone());
-        for (x, y) in rotated.iter_on() {
-            let gx = x as i32;
-            let gy = h - 1 - y as i32;
-            cell.elems.push(pixel_box(
-                gx,
+        for r in &rects {
+            let gy = h - r.y as i32 - r.h as i32;
+            cell.elems.push(gds_out::rect_boundary(
+                r.x as i32,
                 gy,
+                r.w as i32,
+                r.h as i32,
                 grid_nm,
                 cfg.layers.text_layer,
                 cfg.layers.text_datatype,
@@ -104,23 +104,4 @@ pub fn write_layout_gds(
     lib.save(path)
         .map_err(|e| anyhow::anyhow!("gds21 save failed: {e}"))?;
     Ok(())
-}
-
-fn pixel_box(gx: i32, gy: i32, grid_nm: i32, layer: i16, datatype: i16) -> GdsElement {
-    let x0 = gx * grid_nm;
-    let y0 = gy * grid_nm;
-    let x1 = x0 + grid_nm;
-    let y1 = y0 + grid_nm;
-    GdsElement::GdsBoundary(GdsBoundary {
-        layer,
-        datatype,
-        xy: vec![
-            GdsPoint::new(x0, y0),
-            GdsPoint::new(x1, y0),
-            GdsPoint::new(x1, y1),
-            GdsPoint::new(x0, y1),
-            GdsPoint::new(x0, y0),
-        ],
-        ..Default::default()
-    })
 }

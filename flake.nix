@@ -13,7 +13,6 @@
 
         runtimeLibs = with pkgs; [
           libGL
-          mesa
           libxkbcommon
           wayland
           libx11
@@ -80,11 +79,12 @@
       in
       {
         devShells.default = pkgs.mkShell {
-          inherit buildInputs;
+          buildInputs = buildInputs;
           nativeBuildInputs = nativeBuildInputs ++ devTools;
           LD_LIBRARY_PATH = pkgs.lib.makeLibraryPath runtimeLibs;
           FONTCONFIG_FILE = fontsConf;
-          # Paths exposed so scripts never need to scan /nix/store.
+          # Mesa is only needed by the headless screenshot script. The dev
+          # shell exposes its path so the script never has to scan /nix/store.
           GDS_TEXT_MESA = "${pkgs.mesa}";
           GDS_TEXT_MESA_EGL_VENDOR = "${pkgs.mesa}/share/glvnd/egl_vendor.d/50_mesa.json";
           GDS_TEXT_MESA_DRI_PATH = "${pkgs.mesa}/lib/dri";

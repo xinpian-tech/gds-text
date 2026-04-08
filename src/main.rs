@@ -5,6 +5,7 @@ mod bitmap;
 mod config;
 mod fill;
 mod gds_out;
+mod layout;
 mod text_render;
 
 use eframe::egui;
@@ -27,6 +28,15 @@ fn main() -> ExitCode {
             Ok(()) => ExitCode::SUCCESS,
             Err(e) => {
                 eprintln!("export failed: {e}");
+                ExitCode::FAILURE
+            }
+        };
+    }
+    if args.len() >= 2 && args[1] == "export-layout" {
+        return match run_export_layout_cli(&args[2..]) {
+            Ok(()) => ExitCode::SUCCESS,
+            Err(e) => {
+                eprintln!("export-layout failed: {e}");
                 ExitCode::FAILURE
             }
         };
@@ -57,8 +67,10 @@ fn print_help() {
     println!("gds-text -- render text snippets to GDSII + PDF");
     println!();
     println!("USAGE:");
-    println!("  gds-text                         launch GUI");
-    println!("  gds-text export [OPTIONS]        export a preset layout without GUI");
+    println!("  gds-text                          launch GUI");
+    println!("  gds-text export [OPTIONS]         export a flat layout (one canvas)");
+    println!("  gds-text export-layout [OPTIONS]  export a hierarchical layout");
+    println!("                                    (one cell per user, top cell refs them)");
     println!();
     println!("EXPORT OPTIONS:");
     println!("  --gds <path>        write GDSII to <path>");
@@ -185,6 +197,54 @@ fn run_export_cli(args: &[String]) -> anyhow::Result<()> {
 
     let mut renderer = TextRenderer::new();
     gds_out::write_gds(&cfg, &mut renderer, &gds_path)?;
+    println!("wrote {}", gds_path.display());
+    Ok(())
+}
+
+fn run_export_layout_cli(args: &[String]) -> anyhow::Result<()> {
+    use anyhow::{Context, bail};
+
+    let mut cfg_path: Option<PathBuf> = None;
+    let mut gds_path: Option<PathBuf> = None;
+
+    let mut i = 0;
+    while i < args.len() {
+        let a = args[i].as_str();
+        let next = |i: usize| -> anyhow::Result<&String> {
+            args.get(i + 1)
+                .with_context(|| format!("missing value for {a}", a = args[i]))
+        };
+        match a {
+            "--config" => {
+                cfg_path = Some(PathBuf::from(next(i)?));
+                i += 2;
+            }
+            "--gds" => {
+                gds_path = Some(PathBuf::from(next(i)?));
+                i += 2;
+            }
+            other => bail!("unknown option: {other}"),
+        }
+    }
+
+    let cfg_path = cfg_path.ok_or_else(|| anyhow::anyhow!("must specify --config <path>"))?;
+    let gds_path = gds_path.ok_or_else(|| anyhow::anyhow!("must specify --gds <path>"))?;
+
+    let json = std::fs::read_to_string(&cfg_path)
+        .with_context(|| format!("reading {}", cfg_path.display()))?;
+    let cfg = serde_json::from_str::<layout::LayoutConfig>(&json)
+        .with_context(|| format!("parsing {} as LayoutConfig JSON", cfg_path.display()))?;
+
+    println!(
+        "loaded layout: {} cells on {}x{} top canvas ({}nm grid)",
+        cfg.entries.len(),
+        cfg.canvas_width_px,
+        cfg.canvas_height_px,
+        cfg.grid_nm
+    );
+
+    let mut renderer = crate::text_render::TextRenderer::new();
+    layout::write_layout_gds(&cfg, &mut renderer, &gds_path)?;
     println!("wrote {}", gds_path.display());
     Ok(())
 }

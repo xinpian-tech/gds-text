@@ -20,10 +20,23 @@
           libxi
           libxrandr
           vulkan-loader
+          gtk3
+          glib
+          gdk-pixbuf
+          pango
+          atk
+          cairo
+          gsettings-desktop-schemas
           sarasa-gothic
           noto-fonts-cjk-serif
           noto-fonts
           fontconfig
+        ];
+
+        gtkSchemaDirs = with pkgs; [
+          "${gsettings-desktop-schemas}/share/gsettings-schemas/${gsettings-desktop-schemas.name}"
+          "${gtk3}/share/gsettings-schemas/${gtk3.name}"
+          "${glib}/share/gsettings-schemas/${glib.name}"
         ];
 
         buildInputs = with pkgs; [
@@ -67,6 +80,7 @@
           postFixup = ''
             wrapProgram $out/bin/gds-text \
               --prefix LD_LIBRARY_PATH : "${pkgs.lib.makeLibraryPath runtimeLibs}" \
+              --prefix XDG_DATA_DIRS : "${builtins.concatStringsSep ":" gtkSchemaDirs}" \
               --set FONTCONFIG_FILE "${fontsConf}"
           '';
           meta = with pkgs.lib; {
@@ -82,6 +96,7 @@
           buildInputs = buildInputs;
           nativeBuildInputs = nativeBuildInputs ++ devTools;
           LD_LIBRARY_PATH = pkgs.lib.makeLibraryPath runtimeLibs;
+          XDG_DATA_DIRS = builtins.concatStringsSep ":" gtkSchemaDirs;
           FONTCONFIG_FILE = fontsConf;
           # Mesa is only needed by the headless screenshot script. The dev
           # shell exposes its path so the script never has to scan /nix/store.

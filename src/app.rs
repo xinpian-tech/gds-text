@@ -5,7 +5,6 @@ use eframe::egui::epaint::text::{FontInsert, FontPriority, InsertFontFamily};
 
 use crate::config::{MIN_GRID_NM, ProjectConfig, TextSnippet};
 use crate::gds_out;
-use crate::pdf_out;
 use crate::text_render::TextRenderer;
 
 pub struct GdsTextApp {
@@ -142,19 +141,6 @@ impl GdsTextApp {
             }
         }
     }
-
-    fn export_pdf(&mut self) {
-        let path = rfd::FileDialog::new()
-            .add_filter("PDF", &["pdf"])
-            .set_file_name("gds-text.pdf")
-            .save_file();
-        if let Some(p) = path {
-            match pdf_out::write_pdf(&self.cfg, &mut self.renderer, &p) {
-                Ok(()) => self.status = format!("PDF written: {}", p.display()),
-                Err(e) => self.status = format!("PDF export failed: {e}"),
-            }
-        }
-    }
 }
 
 impl eframe::App for GdsTextApp {
@@ -173,9 +159,6 @@ impl eframe::App for GdsTextApp {
                 ui.separator();
                 if ui.button("Export GDS").clicked() {
                     self.export_gds();
-                }
-                if ui.button("Export PDF").clicked() {
-                    self.export_pdf();
                 }
                 ui.separator();
                 ui.label(format!("snippets: {}", self.cfg.snippets.len()));

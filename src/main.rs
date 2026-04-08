@@ -5,8 +5,6 @@ mod bitmap;
 mod config;
 mod fill;
 mod gds_out;
-mod pdf_out;
-mod png_out;
 mod text_render;
 
 use eframe::egui;
@@ -29,15 +27,6 @@ fn main() -> ExitCode {
             Ok(()) => ExitCode::SUCCESS,
             Err(e) => {
                 eprintln!("export failed: {e}");
-                ExitCode::FAILURE
-            }
-        };
-    }
-    if args.len() >= 2 && args[1] == "render-gds" {
-        return match run_render_gds_cli(&args[2..]) {
-            Ok(()) => ExitCode::SUCCESS,
-            Err(e) => {
-                eprintln!("render-gds failed: {e}");
                 ExitCode::FAILURE
             }
         };
@@ -70,13 +59,9 @@ fn print_help() {
     println!("USAGE:");
     println!("  gds-text                         launch GUI");
     println!("  gds-text export [OPTIONS]        export a preset layout without GUI");
-    println!("  gds-text render-gds <in> <out>   render existing GDSII to a PNG");
     println!();
     println!("EXPORT OPTIONS:");
     println!("  --gds <path>        write GDSII to <path>");
-    println!("  --pdf <path>        write PDF preview to <path>");
-    println!("  --png <path>        write PNG preview to <path>");
-    println!("  --png-scale <u32>   PNG pixels per grid cell (default: 4)");
     println!("  --text <string>     text to render (default: 'GDS TEXT 中文')");
     println!("  --font <name>       font family (default: 'Sarasa Mono SC')");
     println!("  --font-size <f32>   font size in grid cells (default: 18)");
@@ -92,9 +77,6 @@ fn run_export_cli(args: &[String]) -> anyhow::Result<()> {
 
     let mut cfg = ProjectConfig::default();
     let mut gds_path: Option<PathBuf> = None;
-    let mut pdf_path: Option<PathBuf> = None;
-    let mut png_path: Option<PathBuf> = None;
-    let mut png_scale: u32 = 4;
     let mut text = "GDS TEXT 中文".to_string();
     let mut font_size: f32 = 18.0;
     let mut rotation: f32 = 0.0;
@@ -111,18 +93,6 @@ fn run_export_cli(args: &[String]) -> anyhow::Result<()> {
         match a {
             "--gds" => {
                 gds_path = Some(PathBuf::from(next(i)?));
-                i += 2;
-            }
-            "--pdf" => {
-                pdf_path = Some(PathBuf::from(next(i)?));
-                i += 2;
-            }
-            "--png" => {
-                png_path = Some(PathBuf::from(next(i)?));
-                i += 2;
-            }
-            "--png-scale" => {
-                png_scale = next(i)?.parse()?;
                 i += 2;
             }
             "--text" => {
@@ -169,9 +139,9 @@ fn run_export_cli(args: &[String]) -> anyhow::Result<()> {
         }
     }
 
-    if gds_path.is_none() && pdf_path.is_none() && png_path.is_none() {
-        bail!("must specify at least one of --gds, --pdf, --png");
-    }
+    let Some(gds_path) = gds_path else {
+        bail!("must specify --gds <path>");
+    };
 
     let id = cfg.alloc_id();
     let mut snippet = TextSnippet::new(id, text, x, y);
@@ -180,54 +150,7 @@ fn run_export_cli(args: &[String]) -> anyhow::Result<()> {
     cfg.snippets.push(snippet);
 
     let mut renderer = TextRenderer::new();
-    if let Some(p) = &gds_path {
-        gds_out::write_gds(&cfg, &mut renderer, p)?;
-        println!("wrote {}", p.display());
-    }
-    if let Some(p) = &pdf_path {
-        pdf_out::write_pdf(&cfg, &mut renderer, p)?;
-        println!("wrote {}", p.display());
-    }
-    if let Some(p) = &png_path {
-        png_out::write_png(&cfg, &mut renderer, p, png_scale)?;
-        println!("wrote {}", p.display());
-    }
-    Ok(())
-}
-
-fn run_render_gds_cli(args: &[String]) -> anyhow::Result<()> {
-    use anyhow::bail;
-    if args.len() < 2 {
-        bail!("usage: gds-text render-gds <in.gds> <out.png> [--scale N] [--pad-nm N]");
-    }
-    let in_path = PathBuf::from(&args[0]);
-    let out_path = PathBuf::from(&args[1]);
-    let mut scale: u32 = 4;
-    let mut padding_nm: i32 = 500;
-    let layers = config::LayerConfig::default();
-
-    let mut i = 2;
-    while i < args.len() {
-        match args[i].as_str() {
-            "--scale" => {
-                scale = args
-                    .get(i + 1)
-                    .ok_or_else(|| anyhow::anyhow!("missing value for --scale"))?
-                    .parse()?;
-                i += 2;
-            }
-            "--pad-nm" => {
-                padding_nm = args
-                    .get(i + 1)
-                    .ok_or_else(|| anyhow::anyhow!("missing value for --pad-nm"))?
-                    .parse()?;
-                i += 2;
-            }
-            other => bail!("unknown option: {other}"),
-        }
-    }
-
-    png_out::render_gds(&in_path, &out_path, layers, scale, padding_nm)?;
-    println!("wrote {}", out_path.display());
+    gds_out::write_gds(&cfg, &mut renderer, &gds_path)?;
+    println!("wrote {}", gds_path.display());
     Ok(())
 }

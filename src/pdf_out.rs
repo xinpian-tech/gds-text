@@ -12,16 +12,15 @@ use crate::gds_out;
 use crate::text_render::TextRenderer;
 
 pub fn write_pdf(cfg: &ProjectConfig, renderer: &mut TextRenderer, path: &Path) -> Result<()> {
-    let grid = cfg.grid_nm as f64;
+    let grid = cfg.grid_nm as f32;
     let cell_mm = grid / 1_000_000.0;
-    let canvas_w_mm = cfg.canvas_width_px as f64 * cell_mm;
-    let canvas_h_mm = cfg.canvas_height_px as f64 * cell_mm;
-    let margin = 10.0f64;
+    let canvas_w_mm = cfg.canvas_width_px as f32 * cell_mm;
+    let canvas_h_mm = cfg.canvas_height_px as f32 * cell_mm;
+    let margin = 10.0f32;
     let page_w = (canvas_w_mm + 2.0 * margin).max(100.0);
     let page_h = (canvas_h_mm + 2.0 * margin).max(100.0);
 
-    let (doc, page, layer) =
-        PdfDocument::new("gds-text preview", Mm(page_w), Mm(page_h), "layer1");
+    let (doc, page, layer) = PdfDocument::new("gds-text preview", Mm(page_w), Mm(page_h), "layer1");
     let layer_ref = doc.get_page(page).get_layer(layer);
 
     // Canvas border.
@@ -70,15 +69,15 @@ pub fn write_pdf(cfg: &ProjectConfig, renderer: &mut TextRenderer, path: &Path) 
 fn draw_cells(
     layer: &printpdf::PdfLayerReference,
     cells: &[(i32, i32)],
-    margin: f64,
-    canvas_h_mm: f64,
-    cell_mm: f64,
+    margin: f32,
+    canvas_h_mm: f32,
+    cell_mm: f32,
     color: Color,
 ) {
     layer.set_fill_color(color);
     for &(gx, gy) in cells {
-        let x_mm = margin + gx as f64 * cell_mm;
-        let y_mm = margin + canvas_h_mm - (gy as f64 + 1.0) * cell_mm;
+        let x_mm = margin + gx as f32 * cell_mm;
+        let y_mm = margin + canvas_h_mm - (gy as f32 + 1.0) * cell_mm;
         let rect = Line {
             points: vec![
                 (PdfPoint::new(Mm(x_mm), Mm(y_mm)), false),

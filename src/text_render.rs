@@ -1,6 +1,6 @@
-//! Text rasterization using cosmic-text, following the ptouch-rs approach.
+//! Text rasterization using cosmic-text.
 
-use anyhow::{Context, Result};
+use anyhow::Result;
 use cosmic_text::{Attrs, Buffer, Color, Family, FontSystem, Metrics, Shaping, SwashCache};
 
 use crate::bitmap::Bitmap;
@@ -81,7 +81,13 @@ impl TextRenderer {
             Some(layout_width),
             Some(layout_height),
         );
-        buffer.set_text(&mut self.font_system, &snippet.text, &attrs, Shaping::Advanced);
+        buffer.set_text(
+            &mut self.font_system,
+            &snippet.text,
+            &attrs,
+            Shaping::Advanced,
+            None,
+        );
         buffer.shape_until_scroll(&mut self.font_system, true);
 
         // Measure tight extent of laid-out glyphs.
@@ -175,11 +181,4 @@ fn trim(b: &Bitmap) -> Bitmap {
         }
     }
     out
-}
-
-/// Error helper used by app to report load failures.
-pub fn ensure_font_available(renderer: &TextRenderer, name: &str) -> Result<String> {
-    renderer
-        .find_font(name)
-        .with_context(|| format!("font '{}' not installed", name))
 }

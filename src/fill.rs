@@ -4,6 +4,13 @@ use std::collections::HashSet;
 
 use crate::config::ProjectConfig;
 
+fn div_ceil_i32(a: i32, b: i32) -> i32 {
+    if b <= 0 {
+        return 0;
+    }
+    (a + b - 1) / b
+}
+
 /// Compute dummy fill cells.
 ///
 /// Algorithm:
@@ -17,8 +24,8 @@ pub fn compute_fill_cells(cfg: &ProjectConfig, used: &[(i32, i32)]) -> Vec<(i32,
     }
 
     let grid = cfg.grid_nm as i32;
-    let excl_cells = (cfg.rules.fill_to_metal_spacing_nm as i32).div_ceil(grid);
-    let spacing_cells = (cfg.rules.min_spacing_nm as i32).div_ceil(grid).max(1);
+    let excl_cells = div_ceil_i32(cfg.rules.fill_to_metal_spacing_nm as i32, grid);
+    let spacing_cells = div_ceil_i32(cfg.rules.min_spacing_nm as i32, grid).max(1);
     let step = spacing_cells + 1;
 
     let mut excluded: HashSet<(i32, i32)> = HashSet::new();

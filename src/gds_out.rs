@@ -1,9 +1,7 @@
 //! GDSII output: text + fill on metal layer as boundaries.
 
 use anyhow::Result;
-use gds21::{
-    GdsBoundary, GdsDateTimes, GdsElement, GdsLibrary, GdsPoint, GdsStruct, GdsUnits,
-};
+use gds21::{GdsBoundary, GdsDateTimes, GdsElement, GdsLibrary, GdsPoint, GdsStruct, GdsUnits};
 use std::path::Path;
 
 use crate::config::ProjectConfig;
@@ -85,6 +83,7 @@ fn pixel_box(gx: i32, gy: i32, grid_nm: i32, layer: i16, datatype: i16) -> GdsEl
 
 pub fn write_gds(cfg: &ProjectConfig, renderer: &mut TextRenderer, path: &Path) -> Result<()> {
     let lib = build_library(cfg, renderer)?;
-    lib.save(path)?;
+    lib.save(path)
+        .map_err(|e| anyhow::anyhow!("gds21 save failed: {e}"))?;
     Ok(())
 }

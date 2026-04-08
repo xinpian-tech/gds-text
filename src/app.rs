@@ -3,7 +3,6 @@
 use eframe::egui;
 use eframe::egui::epaint::text::{FontInsert, FontPriority, InsertFontFamily};
 
-use crate::bitmap::Bitmap;
 use crate::config::{MIN_GRID_NM, ProjectConfig, TextSnippet};
 use crate::gds_out;
 use crate::pdf_out;
@@ -46,7 +45,10 @@ impl GdsTextApp {
         let status = if renderer.find_font(&cfg.font_name).is_some() {
             format!("font '{}' ok", cfg.font_name)
         } else {
-            format!("warning: font '{}' not found, using fallback", cfg.font_name)
+            format!(
+                "warning: font '{}' not found, using fallback",
+                cfg.font_name
+            )
         };
 
         Self {
@@ -226,10 +228,7 @@ impl eframe::App for GdsTextApp {
                 ui.horizontal(|ui| {
                     ui.label("Canvas W:");
                     if ui
-                        .add(
-                            egui::DragValue::new(&mut self.cfg.canvas_width_px)
-                                .range(10..=5_000),
-                        )
+                        .add(egui::DragValue::new(&mut self.cfg.canvas_width_px).range(10..=5_000))
                         .changed()
                     {
                         changed = true;
@@ -238,10 +237,7 @@ impl eframe::App for GdsTextApp {
                 ui.horizontal(|ui| {
                     ui.label("Canvas H:");
                     if ui
-                        .add(
-                            egui::DragValue::new(&mut self.cfg.canvas_height_px)
-                                .range(10..=5_000),
-                        )
+                        .add(egui::DragValue::new(&mut self.cfg.canvas_height_px).range(10..=5_000))
                         .changed()
                     {
                         changed = true;
@@ -254,10 +250,7 @@ impl eframe::App for GdsTextApp {
                     .selected_text(self.cfg.font_name.clone())
                     .show_ui(ui, |ui| {
                         for f in &self.available_fonts {
-                            if ui
-                                .selectable_label(f == &self.cfg.font_name, f)
-                                .clicked()
-                            {
+                            if ui.selectable_label(f == &self.cfg.font_name, f).clicked() {
                                 self.cfg.font_name = f.clone();
                                 changed = true;
                             }
@@ -294,10 +287,8 @@ impl eframe::App for GdsTextApp {
                         ui.label("fill↔metal (nm):");
                         if ui
                             .add(
-                                egui::DragValue::new(
-                                    &mut self.cfg.rules.fill_to_metal_spacing_nm,
-                                )
-                                .range(10..=20_000),
+                                egui::DragValue::new(&mut self.cfg.rules.fill_to_metal_spacing_nm)
+                                    .range(10..=20_000),
                             )
                             .changed()
                         {
@@ -423,7 +414,9 @@ impl eframe::App for GdsTextApp {
                 self.cfg.canvas_height_px as f32,
             );
             let avail = ui.available_size();
-            let scale = ((avail.x / canvas_size.x).min(avail.y / canvas_size.y)).min(3.0).max(0.1);
+            let scale = (avail.x / canvas_size.x)
+                .min(avail.y / canvas_size.y)
+                .clamp(0.1, 3.0);
             let display = canvas_size * scale;
 
             let (rect, response) = ui.allocate_exact_size(display, egui::Sense::click_and_drag());
@@ -484,12 +477,7 @@ impl eframe::App for GdsTextApp {
     }
 }
 
-fn hit_test(
-    renderer: &mut TextRenderer,
-    cfg: &ProjectConfig,
-    x: f32,
-    y: f32,
-) -> Option<usize> {
+fn hit_test(renderer: &mut TextRenderer, cfg: &ProjectConfig, x: f32, y: f32) -> Option<usize> {
     for (i, snippet) in cfg.snippets.iter().enumerate().rev() {
         let (x0, y0, x1, y1) = snippet_bbox(renderer, &cfg.font_name, snippet);
         if (x as i32) >= x0 && (x as i32) < x1 && (y as i32) >= y0 && (y as i32) < y1 {
@@ -526,6 +514,7 @@ fn plot(rgba: &mut [u8], w: usize, h: usize, x: i32, y: i32, color: [u8; 4]) {
     rgba[idx..idx + 4].copy_from_slice(&color);
 }
 
+#[allow(clippy::too_many_arguments)]
 fn draw_rect(
     rgba: &mut [u8],
     w: usize,
@@ -559,13 +548,7 @@ fn setup_fallback_fonts(ctx: &egui::Context) {
     ];
     ctx.add_font(FontInsert {
         name: "cjk_fallback".into(),
-        data: egui::FontData::from_static(include_bytes!(
-            "../assets/fonts/DroidSansFallback.ttf"
-        )),
+        data: egui::FontData::from_static(include_bytes!("../assets/fonts/DroidSansFallback.ttf")),
         families: both,
     });
 }
-
-// Unused import silencing.
-#[allow(dead_code)]
-fn _unused(_b: &Bitmap) {}

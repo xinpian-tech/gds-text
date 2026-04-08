@@ -128,7 +128,10 @@ impl Bitmap {
                 let src_y = -rel_x * s + rel_y * c + cy_src;
                 let sx = src_x.round() as i32;
                 let sy = src_y.round() as i32;
-                if sx >= 0 && sy >= 0 && (sx as u32) < self.width && (sy as u32) < self.height
+                if sx >= 0
+                    && sy >= 0
+                    && (sx as u32) < self.width
+                    && (sy as u32) < self.height
                     && self.get(sx as u32, sy as u32)
                 {
                     out.set(nx, ny, true);

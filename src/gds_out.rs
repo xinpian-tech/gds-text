@@ -10,6 +10,11 @@ use crate::text_render::TextRenderer;
 
 /// Collect (gx, gy) cells for every snippet after rasterization + rotation,
 /// translated by snippet position.
+///
+/// The canvas uses top-left origin (Y increases downward), matching screen
+/// coordinates. Cells returned here stay in that canvas frame; conversion to
+/// GDS bottom-left origin is done in [`build_library`] once the canvas height
+/// is known.
 pub fn collect_text_cells(cfg: &ProjectConfig, renderer: &mut TextRenderer) -> Vec<(i32, i32)> {
     let mut out = Vec::new();
     for snippet in &cfg.snippets {
@@ -36,11 +41,15 @@ pub fn build_library(cfg: &ProjectConfig, renderer: &mut TextRenderer) -> Result
 
     let mut top = GdsStruct::new("TOP");
 
+    // Flip canvas Y to GDS Y (bottom-left origin) so a GDS viewer shows the
+    // text upright.
+    let flip_y = |gy: i32| -> i32 { cfg.canvas_height_px as i32 - 1 - gy };
+
     let text_cells = collect_text_cells(cfg, renderer);
     for &(gx, gy) in &text_cells {
         top.elems.push(pixel_box(
             gx,
-            gy,
+            flip_y(gy),
             grid_nm,
             cfg.layers.text_layer,
             cfg.layers.text_datatype,
@@ -51,7 +60,7 @@ pub fn build_library(cfg: &ProjectConfig, renderer: &mut TextRenderer) -> Result
     for (gx, gy) in fills {
         top.elems.push(pixel_box(
             gx,
-            gy,
+            flip_y(gy),
             grid_nm,
             cfg.layers.fill_layer,
             cfg.layers.fill_datatype,

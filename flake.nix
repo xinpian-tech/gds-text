@@ -44,10 +44,11 @@
 
         devTools = with pkgs; [
           xvfb-run
-          xorg.xorgserver
+          xorg-server
           xdotool
           imagemagick
           scrot
+          klayout
         ];
 
         fontsConf = pkgs.makeFontsConf {

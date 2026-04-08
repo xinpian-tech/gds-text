@@ -1387,6 +1387,7 @@ dependencies = [
  "egui",
  "env_logger",
  "gds21",
+ "image",
  "log",
  "printpdf",
  "rfd",

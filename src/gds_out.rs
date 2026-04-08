@@ -4,7 +4,7 @@ use anyhow::Result;
 use gds21::{GdsBoundary, GdsDateTimes, GdsElement, GdsLibrary, GdsPoint, GdsStruct, GdsUnits};
 use std::path::Path;
 
-use crate::bitmap::Rect;
+use crate::bitmap::{MergedRegion, Rect};
 use crate::config::ProjectConfig;
 use crate::fill;
 use crate::text_render::TextRenderer;
@@ -66,29 +66,58 @@ pub fn build_library(cfg: &ProjectConfig, renderer: &mut TextRenderer) -> Result
 
     let mut top = GdsStruct::new("TOP");
 
-    // Flip canvas Y to GDS Y (bottom-left origin) so a GDS viewer shows the
-    // text upright.
+    // Flip canvas Y to GDS Y (bottom-left origin) so a GDS viewer shows
+    // the text upright.
     let canvas_h = cfg.canvas_height_px as i32;
 
-    let text_rects = collect_text_rects(cfg, renderer);
-    for sr in &text_rects {
-        let r = &sr.rect;
-        // In canvas coords the rect's top is r.y and bottom is r.y + r.h.
-        // After flipping, GDS bottom = canvas_h - (r.y + r.h), top = bottom + r.h.
-        let gy_bottom = canvas_h - r.y as i32 - r.h as i32;
-        top.elems.push(rect_boundary(
-            r.x as i32,
-            gy_bottom,
-            r.w as i32,
-            r.h as i32,
-            grid_nm,
-            cfg.layers.text_layer,
-            cfg.layers.text_datatype,
-        ));
+    let mut used_cells: Vec<(i32, i32)> = Vec::new();
+    for snippet in &cfg.snippets {
+        let Ok(bmp) = renderer.rasterize(snippet, &cfg.font_name) else {
+            continue;
+        };
+        let rotated = bmp.rotate(snippet.rotation_deg);
+        let ox = snippet.x.round() as i32;
+        let oy = snippet.y.round() as i32;
+
+        // Grow the used-cell set (used only by the dummy-fill exclusion).
+        for (x, y) in rotated.iter_on() {
+            used_cells.push((ox + x as i32, oy + y as i32));
+        }
+
+        for region in rotated.to_merged_regions() {
+            match region {
+                MergedRegion::Polygon(pts) => {
+                    top.elems.push(polygon_boundary(
+                        &pts,
+                        ox,
+                        oy,
+                        canvas_h,
+                        grid_nm,
+                        cfg.layers.text_layer,
+                        cfg.layers.text_datatype,
+                    ));
+                }
+                MergedRegion::Rectangles(rects) => {
+                    for r in rects {
+                        let gx = ox + r.x as i32;
+                        let gy_top = oy + r.y as i32;
+                        let gy_bottom = canvas_h - gy_top - r.h as i32;
+                        top.elems.push(rect_boundary(
+                            gx,
+                            gy_bottom,
+                            r.w as i32,
+                            r.h as i32,
+                            grid_nm,
+                            cfg.layers.text_layer,
+                            cfg.layers.text_datatype,
+                        ));
+                    }
+                }
+            }
+        }
     }
 
     // Fill cells are single 1x1 squares by design.
-    let used_cells = rects_to_cells(&text_rects);
     let fills = fill::compute_fill_cells(cfg, &used_cells);
     for (gx, gy) in fills {
         let gy_flipped = canvas_h - 1 - gy;
@@ -105,6 +134,39 @@ pub fn build_library(cfg: &ProjectConfig, renderer: &mut TextRenderer) -> Result
 
     lib.structs.push(top);
     Ok(lib)
+}
+
+/// Build a GdsBoundary from a closed polygon in canvas cell coordinates.
+/// The polygon's Y is flipped to match the GDS bottom-left convention, and
+/// the result is translated by (ox, oy) in cells.
+pub fn polygon_boundary(
+    pts: &[(i32, i32)],
+    ox: i32,
+    oy: i32,
+    canvas_h: i32,
+    grid_nm: i32,
+    layer: i16,
+    datatype: i16,
+) -> GdsElement {
+    let mut xy: Vec<GdsPoint> = pts
+        .iter()
+        .map(|&(x, y)| {
+            let cx = (ox + x) * grid_nm;
+            let cy = (canvas_h - (oy + y)) * grid_nm;
+            GdsPoint::new(cx, cy)
+        })
+        .collect();
+    if xy.first() != xy.last()
+        && let Some(first) = xy.first().cloned()
+    {
+        xy.push(first);
+    }
+    GdsElement::GdsBoundary(GdsBoundary {
+        layer,
+        datatype,
+        xy,
+        ..Default::default()
+    })
 }
 
 /// Build a rectangular GdsBoundary at grid-cell origin (gx, gy) spanning

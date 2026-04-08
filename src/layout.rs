@@ -9,6 +9,7 @@ use gds21::{GdsDateTimes, GdsElement, GdsLibrary, GdsPoint, GdsStruct, GdsStruct
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 
+use crate::bitmap::MergedRegion;
 use crate::config::{DesignRules, LayerConfig};
 use crate::gds_out;
 use crate::text_render::TextRenderer;
@@ -70,22 +71,39 @@ pub fn write_layout_gds(
         let bmp = renderer.rasterize(&snippet, &cfg.font_name)?;
         let rotated = bmp.rotate(entry.rotation_deg);
         let h = rotated.height() as i32;
-        let rects = rotated.to_rectangles();
+        let regions = rotated.to_merged_regions();
 
-        // Build the cell with merged local-coordinate rectangles. Flip Y
+        // Build the cell with merged local-coordinate geometry. Flip Y
         // inside the cell so the text reads upright once placed.
         let mut cell = GdsStruct::new(cell_name.clone());
-        for r in &rects {
-            let gy = h - r.y as i32 - r.h as i32;
-            cell.elems.push(gds_out::rect_boundary(
-                r.x as i32,
-                gy,
-                r.w as i32,
-                r.h as i32,
-                grid_nm,
-                cfg.layers.text_layer,
-                cfg.layers.text_datatype,
-            ));
+        for region in regions {
+            match region {
+                MergedRegion::Polygon(pts) => {
+                    cell.elems.push(gds_out::polygon_boundary(
+                        &pts,
+                        0,
+                        0,
+                        h,
+                        grid_nm,
+                        cfg.layers.text_layer,
+                        cfg.layers.text_datatype,
+                    ));
+                }
+                MergedRegion::Rectangles(rects) => {
+                    for r in &rects {
+                        let gy = h - r.y as i32 - r.h as i32;
+                        cell.elems.push(gds_out::rect_boundary(
+                            r.x as i32,
+                            gy,
+                            r.w as i32,
+                            r.h as i32,
+                            grid_nm,
+                            cfg.layers.text_layer,
+                            cfg.layers.text_datatype,
+                        ));
+                    }
+                }
+            }
         }
         lib.structs.push(cell);
 

@@ -218,3 +218,208 @@ pub struct Rect {
     pub w: u32,
     pub h: u32,
 }
+
+/// One merged region of the on-cell set, produced by
+/// [`Bitmap::to_merged_regions`]. Either a single polygon (for simple
+/// connected components with no enclosed holes) or a list of rectangles
+/// (for components with holes, where polygon + cut-and-slit would be
+/// complex to encode correctly in GDSII).
+#[derive(Debug, Clone)]
+pub enum MergedRegion {
+    /// A closed polygon in integer corner coordinates (CW). First and
+    /// last vertex are the same for an explicit close.
+    Polygon(Vec<(i32, i32)>),
+    /// A union of axis-aligned rectangles. Used as a fallback when the
+    /// connected component has interior holes.
+    Rectangles(Vec<Rect>),
+}
+
+impl Bitmap {
+    /// Merge the on-cells into the tightest boolean union representable
+    /// without cut-and-slit: hole-less connected components become a
+    /// single polygon, components with holes fall back to a rectangle
+    /// decomposition of just that component's cells.
+    pub fn to_merged_regions(&self) -> Vec<MergedRegion> {
+        let components = self.connected_components();
+        let mut out = Vec::with_capacity(components.len());
+        for comp in &components {
+            let loops = self.trace_component_boundary(comp);
+            if loops.len() == 1 {
+                out.push(MergedRegion::Polygon(loops.into_iter().next().unwrap()));
+            } else {
+                let rects = self.rectangles_for_cells(comp);
+                out.push(MergedRegion::Rectangles(rects));
+            }
+        }
+        out
+    }
+
+    fn connected_components(&self) -> Vec<Vec<(u32, u32)>> {
+        let w = self.width as usize;
+        let h = self.height as usize;
+        let mut visited = vec![false; w * h];
+        let mut out: Vec<Vec<(u32, u32)>> = Vec::new();
+        for y in 0..h {
+            for x in 0..w {
+                let i = y * w + x;
+                if visited[i] || self.data[i] == 0 {
+                    continue;
+                }
+                let mut comp: Vec<(u32, u32)> = Vec::new();
+                let mut stack: Vec<(usize, usize)> = vec![(x, y)];
+                visited[i] = true;
+                while let Some((cx, cy)) = stack.pop() {
+                    comp.push((cx as u32, cy as u32));
+                    let nbrs = [
+                        (cx as i32 + 1, cy as i32),
+                        (cx as i32 - 1, cy as i32),
+                        (cx as i32, cy as i32 + 1),
+                        (cx as i32, cy as i32 - 1),
+                    ];
+                    for (nx, ny) in nbrs {
+                        if nx < 0 || ny < 0 || nx >= w as i32 || ny >= h as i32 {
+                            continue;
+                        }
+                        let ni = (ny as usize) * w + (nx as usize);
+                        if visited[ni] || self.data[ni] == 0 {
+                            continue;
+                        }
+                        visited[ni] = true;
+                        stack.push((nx as usize, ny as usize));
+                    }
+                }
+                out.push(comp);
+            }
+        }
+        out
+    }
+
+    fn trace_component_boundary(&self, cells: &[(u32, u32)]) -> Vec<Vec<(i32, i32)>> {
+        use std::collections::{HashMap, HashSet};
+
+        let cell_set: HashSet<(u32, u32)> = cells.iter().copied().collect();
+        let has = |x: i32, y: i32| -> bool {
+            x >= 0 && y >= 0 && cell_set.contains(&(x as u32, y as u32))
+        };
+
+        // Collect directed boundary edges. CW around on-cells (Y grows down).
+        let mut edges: Vec<((i32, i32), (i32, i32))> = Vec::new();
+        for &(ux, uy) in cells {
+            let x = ux as i32;
+            let y = uy as i32;
+            if !has(x, y - 1) {
+                edges.push(((x, y), (x + 1, y)));
+            }
+            if !has(x + 1, y) {
+                edges.push(((x + 1, y), (x + 1, y + 1)));
+            }
+            if !has(x, y + 1) {
+                edges.push(((x + 1, y + 1), (x, y + 1)));
+            }
+            if !has(x - 1, y) {
+                edges.push(((x, y + 1), (x, y)));
+            }
+        }
+
+        let mut by_start: HashMap<(i32, i32), Vec<usize>> = HashMap::new();
+        for (i, &(from, _)) in edges.iter().enumerate() {
+            by_start.entry(from).or_default().push(i);
+        }
+
+        let mut used = vec![false; edges.len()];
+        let mut loops: Vec<Vec<(i32, i32)>> = Vec::new();
+        for seed in 0..edges.len() {
+            if used[seed] {
+                continue;
+            }
+            let mut pts: Vec<(i32, i32)> = Vec::new();
+            let mut cur = seed;
+            loop {
+                used[cur] = true;
+                pts.push(edges[cur].0);
+                let to = edges[cur].1;
+                let candidates = by_start.get(&to).cloned().unwrap_or_default();
+                let nxt = candidates.iter().find(|&&i| !used[i]).copied();
+                match nxt {
+                    Some(n) if n == seed => {
+                        // Closed loop. Ensure explicit close.
+                        pts.push(edges[seed].0);
+                        break;
+                    }
+                    Some(n) => cur = n,
+                    None => break,
+                }
+            }
+            loops.push(pts);
+        }
+        // Compress collinear vertices so the polygon has as few points as
+        // possible.
+        loops
+            .into_iter()
+            .map(|mut p| {
+                compress_collinear(&mut p);
+                p
+            })
+            .collect()
+    }
+
+    fn rectangles_for_cells(&self, cells: &[(u32, u32)]) -> Vec<Rect> {
+        // Build a sub-bitmap the size of the bounding box containing only
+        // this component's cells, then run the standard rectangle
+        // decomposition on it and translate the result back.
+        let (mut min_x, mut min_y) = (u32::MAX, u32::MAX);
+        let (mut max_x, mut max_y) = (0u32, 0u32);
+        for &(x, y) in cells {
+            min_x = min_x.min(x);
+            min_y = min_y.min(y);
+            max_x = max_x.max(x);
+            max_y = max_y.max(y);
+        }
+        let w = max_x - min_x + 1;
+        let h = max_y - min_y + 1;
+        let mut sub = Bitmap::new(w, h);
+        for &(x, y) in cells {
+            sub.set(x - min_x, y - min_y, true);
+        }
+        sub.to_rectangles()
+            .into_iter()
+            .map(|r| Rect {
+                x: r.x + min_x,
+                y: r.y + min_y,
+                w: r.w,
+                h: r.h,
+            })
+            .collect()
+    }
+}
+
+fn compress_collinear(pts: &mut Vec<(i32, i32)>) {
+    if pts.len() < 3 {
+        return;
+    }
+    // Drop the explicit close before compressing to avoid touching the
+    // seam; add it back at the end.
+    let closed = pts.first() == pts.last();
+    if closed {
+        pts.pop();
+    }
+    let mut i = 0;
+    while i < pts.len() && pts.len() >= 3 {
+        let prev = pts[(i + pts.len() - 1) % pts.len()];
+        let cur = pts[i];
+        let next = pts[(i + 1) % pts.len()];
+        // Axis-aligned collinearity: all three share x or all share y.
+        if (prev.0 == cur.0 && cur.0 == next.0) || (prev.1 == cur.1 && cur.1 == next.1) {
+            pts.remove(i);
+            // Don't advance; re-check the same index with the shifted
+            // sequence.
+            i = i.saturating_sub(1);
+        } else {
+            i += 1;
+        }
+    }
+    if closed && !pts.is_empty() {
+        let first = pts[0];
+        pts.push(first);
+    }
+}

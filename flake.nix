@@ -61,6 +61,7 @@
           imagemagick
           scrot
           klayout
+          jq
         ];
 
         fontsConf = pkgs.makeFontsConf {

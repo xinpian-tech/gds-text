@@ -1,0 +1,46 @@
+# Sky130 met1 DRC checks for gds-text output.
+#
+# Run with:
+#   klayout -b -r scripts/sky130_met1.drc \
+#       -rd in=/path/to/in.gds -rd out=/path/to/out.lyrdb
+#
+# Sky130 met1 minimum rules used here:
+#   met1.minWidth   = 0.14 um
+#   met1.minSpacing = 0.14 um
+#
+# All sources for our GDS produce shapes on layer 68, datatypes 20 (text)
+# and 44 (fill). Both are met1.
+
+source($in)
+report("sky130 met1 DRC", $out)
+
+# Combine met1.drawing (68/20) and met1.fill (68/44) into one met1 set.
+met1_drawing = input(68, 20)
+met1_fill    = input(68, 44)
+met1         = met1_drawing + met1_fill
+
+# Width check.
+met1.width(0.14.um).output("met1_width",
+  "met1 width < 0.14 um (sky130 minimum)")
+
+# Spacing check (separation rule, ignoring shapes that touch -> merged
+# polygons treated as single shape).
+met1.space(0.14.um).output("met1_space",
+  "met1 spacing < 0.14 um (sky130 minimum)")
+
+# Stand-alone width check on text vs fill (in case the user wants to see
+# them separately).
+met1_drawing.width(0.14.um).output("met1_drawing_width",
+  "met1.drawing width < 0.14 um")
+met1_drawing.space(0.14.um).output("met1_drawing_space",
+  "met1.drawing spacing < 0.14 um")
+met1_fill.width(0.14.um).output("met1_fill_width",
+  "met1.fill width < 0.14 um")
+met1_fill.space(0.14.um).output("met1_fill_space",
+  "met1.fill spacing < 0.14 um")
+
+# Cross-check: distance from drawing to fill (sky130 met1 has no separate
+# rule for this, but we still report it as informational at >= 0.14 um).
+met1_drawing.separation(met1_fill, 0.14.um).output(
+  "met1_drawing_to_fill_sep",
+  "met1.drawing <-> met1.fill < 0.14 um")

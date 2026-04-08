@@ -1,4 +1,4 @@
-//! egui application — main window, canvas, properties panel.
+//! egui application -- main window, canvas, properties panel.
 
 use eframe::egui;
 use eframe::egui::epaint::text::{FontInsert, FontPriority, InsertFontFamily};
@@ -284,7 +284,7 @@ impl eframe::App for GdsTextApp {
                         }
                     });
                     ui.horizontal(|ui| {
-                        ui.label("fill↔metal (nm):");
+                        ui.label("fill<->metal (nm):");
                         if ui
                             .add(
                                 egui::DragValue::new(&mut self.cfg.rules.fill_to_metal_spacing_nm)
@@ -318,14 +318,14 @@ impl eframe::App for GdsTextApp {
                 for i in 0..self.cfg.snippets.len() {
                     ui.horizontal(|ui| {
                         let label = self.cfg.snippets[i].text.clone();
-                        let resp = ui.selectable_label(
-                            self.selected == Some(i),
-                            if label.len() > 14 {
-                                format!("#{i}: {}…", &label[..14])
-                            } else {
-                                format!("#{i}: {}", label)
-                            },
-                        );
+                        let chars: Vec<char> = label.chars().collect();
+                        let display = if chars.len() > 14 {
+                            let truncated: String = chars.iter().take(14).collect();
+                            format!("#{i}: {truncated}...")
+                        } else {
+                            format!("#{i}: {label}")
+                        };
+                        let resp = ui.selectable_label(self.selected == Some(i), display);
                         if resp.clicked() {
                             self.selected = Some(i);
                             changed = true;
@@ -377,7 +377,7 @@ impl eframe::App for GdsTextApp {
                         });
                         ui.horizontal(|ui| {
                             for a in [0.0, 45.0, 90.0, 135.0, 180.0, 270.0] {
-                                if ui.small_button(format!("{a:.0}°")).clicked() {
+                                if ui.small_button(format!("{a:.0}deg")).clicked() {
                                     s.rotation_deg = a;
                                     changed = true;
                                 }

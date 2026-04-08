@@ -13,6 +13,7 @@
 
         runtimeLibs = with pkgs; [
           libGL
+          mesa
           libxkbcommon
           wayland
           libx11
@@ -39,6 +40,14 @@
           clippy
           pkg-config
           makeWrapper
+        ];
+
+        devTools = with pkgs; [
+          xvfb-run
+          xorg.xorgserver
+          xdotool
+          imagemagick
+          scrot
         ];
 
         fontsConf = pkgs.makeFontsConf {
@@ -70,9 +79,14 @@
       in
       {
         devShells.default = pkgs.mkShell {
-          inherit buildInputs nativeBuildInputs;
+          inherit buildInputs;
+          nativeBuildInputs = nativeBuildInputs ++ devTools;
           LD_LIBRARY_PATH = pkgs.lib.makeLibraryPath runtimeLibs;
           FONTCONFIG_FILE = fontsConf;
+          # Paths exposed so scripts never need to scan /nix/store.
+          GDS_TEXT_MESA = "${pkgs.mesa}";
+          GDS_TEXT_MESA_EGL_VENDOR = "${pkgs.mesa}/share/glvnd/egl_vendor.d/50_mesa.json";
+          GDS_TEXT_MESA_DRI_PATH = "${pkgs.mesa}/lib/dri";
           shellHook = ''
             echo "gds-text dev shell -- rust $(rustc --version)"
           '';
